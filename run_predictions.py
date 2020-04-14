@@ -17,34 +17,85 @@ def detect_red_light(I):
     I[:,:,1] is the green channel
     I[:,:,2] is the blue channel
     '''
-    
-    
-    bounding_boxes = [] # This should be a list of lists, each of length 4. See format example below. 
-    
     '''
     BEGIN YOUR CODE
     '''
+    ############# split the image into color channels
+    redarr = I[:,:,0]
+    greenarr = I[:,:,1]
+    bluearr = I[:,:,2] 
+
+    ##### normalization
+    sumarr = 0.1*redarr+0.1*greenarr+0.8*bluearr
+    mask = np.where(sumarr==0)
+    redN = redarr/sumarr
+    greenN = greenarr/sumarr
+    blueN = greenarr/sumarr
+    redN[mask] = 0
+    greenN[mask]=0
+    blueN[mask] =0
+
+    ##### standardization
+    redmax =np.max(redN)
+    redmin = np.min(redN)
+    redS = (redN-redmin)/(redmax-redmin)
+    redS = redS*255
     
-    '''
-    As an example, here's code that generates between 1 and 5 random boxes
-    of fixed size and returns the results in the proper format.
-    '''
+    greenmax = np.max(greenN)
+    greenmin = np.min(greenN)
+    greenS = (greenN-greenmin)/(greenmax-greenmin)
+    greenS = greenS*255
+
+    bluemax = np.max(blueN)
+    bluemin = np.min(blueN)
+    blueS = (blueN-bluemin)/(bluemax-bluemin)
+    blueS = blueS*255
     
-    box_height = 8
-    box_width = 6
-    
-    num_boxes = np.random.randint(1,5) 
-    
-    for i in range(num_boxes):
-        (n_rows,n_cols,n_channels) = np.shape(I)
-        
-        tl_row = np.random.randint(n_rows - box_height)
-        tl_col = np.random.randint(n_cols - box_width)
-        br_row = tl_row + box_height
-        br_col = tl_col + box_width
-        
-        bounding_boxes.append([tl_row,tl_col,br_row,br_col]) 
-    
+    shape =redarr.shape
+
+    #### find all the target
+    ind = np.where((redS >= np.percentile(redS,90)) & (greenS<np.percentile(greenS,5)) & (blueS<np.percentile(blueS,5)))
+    points=[]
+    for j in range(len(ind[0])):
+        points.append((ind[1][j],ind[0][j]))
+
+
+    #### find the center of a red light from all nearby targets
+    new_points = [] # saves the center 
+    width =[]
+    height = []
+    points_smp = np.array(points)
+    while points_smp.shape[0]>1:
+        # calculate the distance between all targets
+        distance = np.sum((points_smp[0] - points_smp[1:])**2,axis=-1)
+        # choose nearby targets
+        limit = np.percentile(distance,5)
+        same_loc = np.append(0, np.where(distance <=limit)[0] + 1)
+        same_ind = points_smp[same_loc]
+        # pick the center target
+        redS_same = []
+        for si in same_ind:
+            redS_same.append(redS[si[1],si[0]])
+        merged_loc = np.argmax(redS_same) # the index of point
+        merged_ind = same_ind[merged_loc] # the x,y of point
+
+     # calculate the size of bounding boxes
+        distance_from_center = np.sqrt(np.sum((points_smp[merged_loc] - points_smp[same_loc])**2,axis=-1))
+        w0 = int(np.trunc(np.percentile(distance_from_center,50)/2))
+        if (w0<20) & (merged_ind[1]<shape[0]/2):
+            new_points.append(merged_ind)
+            width.append(w0)
+            height.append(5*w0)
+        points_smp = np.delete(points_smp,same_loc,axis=0)
+
+    bounding_boxes = [] # This should be a list of lists, each of length 4. See format example below. 
+    for k in range(len(new_points)):
+        tl_row = int(new_points[k][1]-width[k])
+        tl_col = int(new_points[k][0]-width[k])
+        br_row = int(new_points[k][1]+height[k])
+        br_col = int(new_points[k][0]+width[k])
+        bounding_boxes.append([tl_row,tl_col,br_row,br_col])
+
     '''
     END YOUR CODE
     '''
